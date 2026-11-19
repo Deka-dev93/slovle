@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wordle на русском — угадай слово из 5 букв</title>
+<meta name="description" content="Бесплатная игра Wordle на русском языке. Угадайте слово из пяти букв за шесть попыток.">
+<style>
+:root{--bg:#fff;--fg:#1a1a1b;--line:#d3d6da;--key:#d3d6da;--ok:#538d4e;--mid:#b59f3b;--no:#787c7e}
+@media (prefers-color-scheme:dark){:root{--bg:#121213;--fg:#fff;--line:#3a3a3c;--key:#818384;--no:#3a3a3c}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,sans-serif;display:flex;flex-direction:column;align-items:center;min-height:100vh}
+header{width:100%;max-width:500px;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line)}
+h1{margin:0;font-size:1.5rem;letter-spacing:.1em}
+button.new{background:none;border:1px solid var(--line);color:var(--fg);padding:6px 12px;border-radius:6px;cursor:pointer;font-size:.9rem}
+#msg{height:32px;margin:8px 0;font-weight:700}
+#board{display:grid;grid-template-rows:repeat(6,1fr);gap:5px;margin-bottom:16px}
+.row{display:grid;grid-template-columns:repeat(5,1fr);gap:5px}
+.tile{width:min(14vw,62px);height:min(14vw,62px);border:2px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:1.8rem;font-weight:700;text-transform:uppercase}
+.tile.filled{border-color:#878a8c}
+.tile.ok,.tile.mid,.tile.no{color:#fff;border-color:transparent;animation:flip .5s}
+.ok{background:var(--ok)}.mid{background:var(--mid)}.no{background:var(--no)}
+@keyframes flip{0%{transform:rotateX(0)}50%{transform:rotateX(90deg)}100%{transform:rotateX(0)}}
+.shake{animation:shake .4s}
+@keyframes shake{25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
+#kb{width:100%;max-width:500px;padding:0 6px 16px}
+.krow{display:flex;justify-content:center;gap:5px;margin-bottom:6px}
+.key{flex:1;max-width:44px;height:52px;border:0;border-radius:4px;background:var(--key);color:var(--fg);font-weight:700;font-size:1rem;cursor:pointer;text-transform:uppercase;padding:0}
+.key.wide{max-width:64px;font-size:.8rem}
+.key.ok,.key.mid,.key.no{color:#fff}
+.overlay,#modal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:5}
+.overlay[hidden],#modal[hidden]{display:none}
+.tabs{display:flex;gap:6px;margin-top:10px}
+.tabs button{background:none;border:0;border-bottom:3px solid transparent;color:var(--fg);padding:6px 10px;cursor:pointer;font-size:.95rem;opacity:.65}
+.tabs button.on{border-color:var(--ok);opacity:1;font-weight:700}
+.dot{display:inline-block;width:16px;height:16px;border-radius:3px;vertical-align:middle;margin-right:6px}
+.card p{font-size:.9rem;line-height:1.5}
+#newBtn[hidden]{visibility:hidden;display:inline-block}
+.card{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:20px;width:min(92vw,360px)}
+.card h2{margin:0 0 12px;text-align:center}
+.nums{display:flex;justify-content:space-around;text-align:center;margin-bottom:14px}
+.nums b{display:block;font-size:1.6rem}.nums span{font-size:.75rem}
+.bar{display:flex;align-items:center;gap:6px;margin:3px 0;font-size:.85rem}
+.bar i{background:var(--no);color:#fff;min-width:18px;padding:0 6px;text-align:right;font-style:normal;border-radius:2px}
+.bar i.hi{background:var(--ok)}
+.btns{display:flex;gap:8px;justify-content:center;margin-top:14px}
+@media (max-height:640px){.key{height:44px}#msg{margin:2px 0}}
+</style>
+</head>
+<body>
+<header><span><button class="new" id="statBtn">📊</button> <button class="new" id="helpBtn">❓</button></span><h1>СЛОВЛЕ</h1><button class="new" id="newBtn">Новая игра</button></header>
+<div class="tabs"><button id="tabDaily">Слово дня</button><button id="tabRandom">Случайное</button></div>
+<div id="help" class="overlay" hidden><div class="card">
+  <h2>Как играть</h2>
+  <p>Угадайте слово из 5 букв за 6 попыток. После каждой попытки буквы меняют цвет:</p>
+  <p><span class="dot ok"></span> буква на своём месте<br><span class="dot mid"></span> буква есть в слове, но стоит в другом месте<br><span class="dot no"></span> такой буквы в слове нет</p>
+  <p><b>Слово дня</b> одно для всех и меняется раз в сутки. <b>Случайное</b> можно играть сколько угодно.</p>
+  <div class="btns"><button class="new" id="helpClose">Понятно</button></div>
+</div></div>
+<div id="modal" hidden><div class="card">
+  <h2>Статистика</h2>
+  <div id="stats"></div>
+  <div class="btns"><button class="new" id="shareBtn">Поделиться</button><button class="new" id="closeBtn">Закрыть</button></div>
+</div></div>
+<div id="msg"></div>
+<div id="board"></div>
+<div id="kb"></div>
+<script>
+const LIST = `
+аванс адрес акула альбом атлас баран банан барон берег билет бровь буква булка бусы вагон ветер весна вилка вишня вода волна ворон вечер гараж герой глина гнездо голос горох город груша гусь дверь девка добро доска дождь доход дракон дрова духи дюна езда ёлка жизнь жираф завод заяц звезда зебра зерно змея зонт зубы игрок икона играть камень канал карта кашель кисть клетка клубок ключ книга кожа колено конь корова косой краб кран крыша кубик кузнец лампа лапша лента лимон липа лодка ложка лошадь луна лыжи магия майка мальчик маска масло мебель медаль мел метро мечта мишка молот море мост мотор мыло мышь налог небо нога норка нота носок облако огонь окно орган осень отец пакет палец парк пасха перец песня песок пирог плащ площадь погода поезд пол полка порог почта поэт праздник птица пуля пчела пыль радио ракета река ремень рисунок рояль рубль ручка рыба рынок садик салат самолёт сапог свеча сегодня сено сила символ синий скала слово слон смех снег собака сок сон спорт среда стакан стена стол страна сумка сыр табак тайна такси театр тетрадь тигр торт трава трос туман тропа тучи удача улица урок утка уха успех фабрика фасоль фигура флаг фонарь форма фрукт хлеб холод цвет цирк чайка чашка часы чай черта число шарик шапка шарф шахта шило школа шорты щётка щука эхо юбка яблоко ягода язык яйцо якорь ярмарка
+арбуз банка башня бегун белка берёза бокал борщ брюки будка бумага букет виллавопрос ворота врач вкус гамак гвоздь герб гитара глаз глобус гнев гроза гривна гора доктор дворец дерево диван дневник долг домик драма дым дыня жара жаркое жених журнал забор зависть замок запах зарядка зарплата зелень зеркало зима зубр игла идея имя искра июль июнь кабан кадр калач кактус кнопка колесо конец кошмар кража краска кресло кролик кукла купол курица ласка лебедь лёд лето лист лифт лицо лом лук лужа любовь март медведь мёд метла мираж молоко муха налим наряд нерв ночь ножик номер носок овёс огурец одеяло озеро океан орёл остров осёл отряд палуба панда парус перья печка пламя планета повар подвал позиция поле помощь порода посуда потолок пояс принц приказ птенец пустыня пчёлы радуга рамка рассвет резьба рукав ружьё рюкзак сад сайт салон свитер север сейф семья сестра сказка склад скука смена совет солнце спина сталь стиль столик сцена тайга танец тарелка тень тесто тишина товар трава тренер трюк тулуп турист тюлень удар узел улыбка успех утро ухо учёба фазан фараон февраль фокус фрегат халат хвост холм хомяк хоккей цепь центр цифра чайник чехол чудо шанс шахматы шатёр шёпот шипы шкаф шлем шум щедрость экран эпоха этаж юбилей юноша яблоня январь
+абзац агент азарт актёр аллея амбар ангел анкета арена аптека аромат багаж бабка бабочка базар балет балкон бантик барабан барьер басня бидон бизнес билет блеск близнец блины богач болото брага бригада бублик бульон буфет бюджет вафля вдова вексель верба весы взгляд взрыв вихрь виноград вирус вклад вождь возраст волк вор врата выбор выпуск высота гайка галка гений гибель гимн глина гном голова голубь гонка горка гость град гребень гриб группа грусть гуща давка дама дарить двор дебют девиз демон держава дичь добыча дождик долина дрожь дубок дурак душа дуэт ежик жалость жатва жилет жрец забава зависть задача залог заря заряд зверь злоба знание зоопарк ирис ирония кабинет каска каток кедр килограмм кино кирпич кислота клад клевер клоун клык кнут кольцо компас корень корка король кость котёл кофе кошель краса крепость кровь кружка крыло кулак культ курорт кусок лавка ладонь лазер ларец лесник лихо лодыжка лопата лоскут лотос лучик львица людям магнит макет маляр мантия маршрут матч маяк мираж модель мозг молния монета монах морж мрамор мудрец музей мундир мусор набор навык надежда наука недра нитка нрав обзор обман образ обряд овраг огород округ олень опора опыт орден осада осина отдых отклик отрава охота очерк падеж пакость палка пальма пара партия пастух патрон пауза паук педаль пейзаж пекарь перрон петля печать пилот плакат платье племя плита плод плот пожар пони попугай порция посол почва правда прилив пример приют провод пролив пруд птичка пурга пушка пьеса пятно работа радость развод разум ранец рапира рассказ ребёнок режим ресница ритм робот родник рожь розыск ромашка роса рубеж рыцарь сабля сажа салют сатин сахар свадьба связь сделка секрет сердце сеть сигнал силач сирена ситец скакун скейт скрипка слива слог слуга смола снаряд собор сокол сорока союз спектр спичка спрут ссора старик столбик стих страх строка студия стая судья суть счёт сюжет тайник такт талант таран театр терем тетерев тирада титул ткань топор торжество точка трасса трель трибуна трюфель тундра турнир тыква убор угодье угол удочка укор улов ум универ урожай утюг уют факел фантом фасад ферма фея фирма флейта фляга фонд фраза фронт хатка хлопок ходьба холст хор хутор царь цветок цель цикл циркуль цитата чаща чекан череп честь чехия чибис чудак чулан шаг шайба шалаш шарм шпага шпиль штамп штраф штурм шутка щавель щель экзамен эксперт элита эмаль эрудит этап юность юрта яма ярус
+абрис авизо аврал агава адепт азбука акцент алмаз аншлаг арфа архив аскет аспект астра афера бакен бамбук банда барак барка баскет батон бахрома бедро бельё берлога бивень билет бинт бирка битва блюдо боб бодрость бойня болид бочка брань браслет бред бриз брусок бузина бутон бык бытие вазон вакса валик вальс ванна вариант вахта вежливость вельможа венок верфь вершина веха ветка вещь взвод визит вклад вкладыш вздох вилы винт висок витраж вихор владыка влага вмятина вокзал волос вояж врать вспышка выгода выдра вызов выстрел вьюга вьюн газон гайка гарант гарем гвардия гейзер гибрид гильза гирлянда глагол гладь гласность глыба гоблин голод гондола горло горн горошина горн гравий гранит грация гремя гроздь грот грудь груз гряда губка гудок гуляш гусар дальше дачка движок деготь декада декор делец демо денёк депо десант дикарь динамит дичок длань добыча довод догма долото донор дробь дрозд дружба дубль дупло дурман дымок дюжина дятел египтянин ёрш ехидна жало жбан жгут желоб жемчуг жертва жетон живот жила жмых жнец жребий жулик забег завиток загар задор зайчик закат заказ закон залив замах заноза запас запись заплата заповедь заросль застой заточка зевок зелье зигзаг злак значок золото зрачок зритель зуда иголка идол избыток изгиб излом излив изумруд иней инженер иноходец искус испуг истина итог ишак кадка казна кайма калька камыш канава кандидат кант капкан каприз капля карат карниз кастрюля катер каша квадрат квота кивок кисель китель кладка клапан клатч клещи климат клинок клип клюв кокон колодец колонна колос комар комбайн комета комик комод компот кондор копия копьё корзина корма корона косметика коса костёр косяк кот котёнок кочан кошка кража кран кривая кристалл кросс кроха круиз круг крупа крыльцо кубок кулон купец курган кура курс кусты лабиринт лавина ладья лак лангуст лапка ларёк латка лебёдка левша лень лес лимб линза линия лира литр лихач лоб ловкость логика лоза ломка лопух лосось лоток лукавство лыко льдина любитель людно магма мазок макака макушка малина мамонт манеж манго манка мараль марка маска массив мастер матрас мать маховик мачта машинист медуза мелодия мельница мемуар мера месяц метель метка мешок микрон мимоза минус миссия митинг мичман мишень младенец множество мода моль молва монтаж морозко моряк мотив мошка мощь мрак мука мундштук мурава мурашка мыс мякоть мячик
+`.split(/\s+/).map(w=>w.replace(/ё/g,'е')).filter(w=>/^[а-я]{5}$/.test(w));
+const POOL = [...new Set(LIST)];
+const ROWS = ['йцукенгшщзхъ','фывапролджэ','ячсмитьбю'];
+let answer, row, col, grid, over, keyState;
+const $=id=>document.getElementById(id);
+function build(){
+  $('board').innerHTML='';
+  grid=[];
+  for(let r=0;r<6;r++){
+    const rowEl=document.createElement('div');rowEl.className='row';
+    const tiles=[];
+    for(let c=0;c<5;c++){const t=document.createElement('div');t.className='tile';rowEl.appendChild(t);tiles.push(t)}
+    $('board').appendChild(rowEl);grid.push({el:rowEl,tiles});
+  }
+  $('kb').innerHTML='';
+  ROWS.forEach((letters,i)=>{
+    const r=document.createElement('div');r.className='krow';
+    if(i===2)r.appendChild(mk('Enter','↵ Ввод',true));
+    for(const ch of letters)r.appendChild(mk(ch,ch));
+    if(i===2)r.appendChild(mk('Backspace','⌫',true));
+    $('kb').appendChild(r);
+  });
+}
+function mk(k,label,wide){
+  const b=document.createElement('button');b.className='key'+(wide?' wide':'');b.textContent=label;b.dataset.k=k;
+  b.onclick=()=>press(k);return b;
+}
+let mode=(()=>{try{return localStorage.getItem('slovle_mode')==='random'?'random':'daily'}catch(e){return 'daily'}})();
+function today(){const d=new Date();return d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate()}
+function dailyWord(){
+  // одинаковое слово у всех в один и тот же день
+  const sorted=[...POOL].sort();
+  const d=new Date(),n=Math.floor(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate())/86400000);
+  return sorted[(n*7919+13)%sorted.length];
+}
+function saveDaily(guesses){try{localStorage.setItem('slovle_daily',JSON.stringify({date:today(),guesses}))}catch(e){}}
+function loadDaily(){
+  try{const s=JSON.parse(localStorage.getItem('slovle_daily'));if(s&&s.date===today())return s.guesses}catch(e){}
+  return [];
+}
+let guessWords=[];
+function start(){
+  answer=mode==='daily'?dailyWord():POOL[Math.floor(Math.random()*POOL.length)];
+  row=0;col=0;over=false;keyState={};history=[];guessWords=[];
+  build();msg('');
+  $('tabDaily').classList.toggle('on',mode==='daily');
+  $('tabRandom').classList.toggle('on',mode==='random');
+  $('newBtn').hidden=mode==='daily';
+  if(mode==='daily'){
+    for(const w of loadDaily()){
+      for(const ch of w)press(ch);
+      submit(true);
+      if(over)break;
+    }
+  }
+}
+function setMode(m){
+  mode=m;try{localStorage.setItem('slovle_mode',m)}catch(e){}
+  start();
+}
+function msg(t){$('msg').textContent=t}
+function press(k){
+  if(over||!$('modal').hidden||!$('help').hidden)return;
+  if(k==='Enter')return submit();
+  if(k==='Backspace'){if(col>0){col--;const t=grid[row].tiles[col];t.textContent='';t.classList.remove('filled')}return}
+  if(/^[а-яё]$/i.test(k)&&col<5){
+    const t=grid[row].tiles[col];t.textContent=k.toLowerCase().replace('ё','е');t.classList.add('filled');col++;
+  }
+}
+function submit(silent){
+  if(col<5){grid[row].el.classList.remove('shake');void grid[row].el.offsetWidth;grid[row].el.classList.add('shake');return msg('Не хватает букв')}
+  const guess=grid[row].tiles.map(t=>t.textContent).join('');
+  const res=Array(5).fill('no'),left=answer.split('');
+  for(let i=0;i<5;i++)if(guess[i]===answer[i]){res[i]='ok';left[i]=null}
+  for(let i=0;i<5;i++)if(res[i]==='no'){const j=left.indexOf(guess[i]);if(j>-1){res[i]='mid';left[j]=null}}
+  const rank={no:1,mid:2,ok:3};
+  for(let i=0;i<5;i++){
+    grid[row].tiles[i].classList.add(res[i]);grid[row].tiles[i].style.animationDelay=i*0.1+'s';
+    if(!keyState[guess[i]]||rank[res[i]]>rank[keyState[guess[i]]])keyState[guess[i]]=res[i];
+  }
+  document.querySelectorAll('.key').forEach(b=>{const s=keyState[b.dataset.k];if(s){b.classList.remove('ok','mid','no');b.classList.add(s)}});
+  history.push(res);guessWords.push(guess);
+  if(mode==='daily'&&silent!==true)saveDaily(guessWords);
+  const rec=silent===true?()=>{}:record;
+  if(guess===answer){over=true;msg('Победа! 🎉');rec(true,row+1);return}
+  row++;col=0;msg('');
+  if(row===6){over=true;msg('Слово было: '+answer.toUpperCase());rec(false,0)}
+}
+let history=[];
+function load(){
+  try{return JSON.parse(localStorage.getItem('slovle'))||{p:0,w:0,s:0,m:0,d:[0,0,0,0,0,0]}}
+  catch(e){return {p:0,w:0,s:0,m:0,d:[0,0,0,0,0,0]}}
+}
+function record(win,n){
+  const s=load();s.p++;
+  if(win){s.w++;s.s++;s.m=Math.max(s.m,s.s);s.d[n-1]++}else s.s=0;
+  try{localStorage.setItem('slovle',JSON.stringify(s))}catch(e){}
+  setTimeout(showStats,1200);
+}
+function showStats(){
+  const s=load(),mx=Math.max(1,...s.d);
+  $('stats').innerHTML='<div class="nums"><div><b>'+s.p+'</b><span>Игр</span></div><div><b>'+(s.p?Math.round(100*s.w/s.p):0)+'%</b><span>Побед</span></div><div><b>'+s.s+'</b><span>Серия</span></div><div><b>'+s.m+'</b><span>Рекорд</span></div></div>'+
+    s.d.map((v,i)=>'<div class="bar">'+(i+1)+' <i class="'+(over&&row===i&&history.length&&history[history.length-1].every(x=>x==='ok')?'hi':'')+'" style="width:'+Math.max(8,v/mx*100)+'%">'+v+'</i></div>').join('');
+  $('modal').hidden=false;
+}
+function share(){
+  const em={ok:'🟩',mid:'🟨',no:'⬛'};
+  const won=history.length&&history[history.length-1].every(x=>x==='ok');
+  const text='Словле '+(mode==='daily'?'(слово дня) ':'')+(won?history.length:'X')+'/6\n'+history.map(r=>r.map(x=>em[x]).join('')).join('\n');
+  if(navigator.clipboard)navigator.clipboard.writeText(text).then(()=>{$('shareBtn').textContent='Скопировано!'},()=>{});
+  setTimeout(()=>{$('shareBtn').textContent='Поделиться'},1500);
+}
+$('statBtn').onclick=e=>{e.target.blur();showStats()};
+$('closeBtn').onclick=()=>{$('modal').hidden=true};
+$('shareBtn').onclick=share;
+$('modal').onclick=e=>{if(e.target.id==='modal')$('modal').hidden=true};
+document.addEventListener('keydown',e=>{
+  if(e.ctrlKey||e.metaKey||e.altKey)return;
+  if(e.key==='Enter'||e.key==='Backspace')press(e.key);
+  else if(e.key.length===1)press(e.key);
+});
+$('newBtn').onclick=e=>{e.target.blur();start()};
+$('tabDaily').onclick=e=>{e.target.blur();setMode('daily')};
+$('tabRandom').onclick=e=>{e.target.blur();setMode('random')};
+$('helpBtn').onclick=e=>{e.target.blur();$('help').hidden=false};
+$('helpClose').onclick=()=>{$('help').hidden=true};
+$('help').onclick=e=>{if(e.target.id==='help')$('help').hidden=true};
+try{if(!localStorage.getItem('slovle_seen')){localStorage.setItem('slovle_seen','1');$('help').hidden=false}}catch(e){}
+start();
+</script>
+</body>
+</html>
