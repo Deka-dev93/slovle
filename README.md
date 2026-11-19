@@ -1,0 +1,3 @@
+# Slovle
+
+Wordle in Russian.
